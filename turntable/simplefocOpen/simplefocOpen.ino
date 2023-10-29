@@ -12,7 +12,7 @@ void doLimitCurrent(char* cmd) { command.scalar(&motor.current_limit, cmd); }
 
 void setup() {
 
-  pinMode(12,OUTPUT); // declares pin as output and sets it to LOW
+  pinMode(12,OUTPUT); // low power ground pin
 
   Serial.begin(115200);
 
