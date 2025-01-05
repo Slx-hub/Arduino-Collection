@@ -206,6 +206,20 @@ void Epd::TurnOffDisplay(void) {
     EPD_7IN3F_BusyHigh();
 }
 
+// My own Methods for pushing chunks into the Displaybuffer
+
+void Epd::PrepareImageUpload(void) {
+  SendCommand(0x10);
+}
+void Epd::UploadImageChunk(uint8_t *buffer, size_t buffer_size) {
+  for (int i=0;i<buffer_size;i++) {
+    SendData((unsigned char)buffer[i]);
+  }
+}
+void Epd::FinalizeImageUpload(void) {
+  TurnOnDisplay();
+}
+
 /******************************************************************************
 function :  Sends the image buffer in RAM to e-Paper and displays
 parameter:

@@ -65,6 +65,9 @@ public:
 	void TurnOnDisplay(void);
   void TurnOffDisplay(void);
     void Reset(void);
+    void PrepareImageUpload(void);
+    void UploadImageChunk(uint8_t *buffer, size_t buffer_size);
+    void FinalizeImageUpload(void);
     void EPD_7IN3F_Display(const UBYTE *image);
     void EPD_7IN3F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
                                  UWORD image_width, UWORD image_heigh);

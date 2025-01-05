@@ -49,6 +49,28 @@ bool DisplayHandler::Clear(String colorIndex) {
   return true;
 }
 
+bool DisplayHandler::PrepareImageUpload(void) {
+  if (!PrepareForTask()) {
+    return false;
+  }
+  epd.PrepareImageUpload();
+  return true;
+}
+bool DisplayHandler::UploadImageChunk(uint8_t *buffer, size_t buffer_size) {
+  if (dspState != idle) {
+    return false;
+  }
+  epd.UploadImageChunk(buffer, buffer_size);
+  return true;
+}
+bool DisplayHandler::FinalizeImageUpload(void) {
+  if (!PrepareForTask()) {
+    return false;
+  }
+  epd.FinalizeImageUpload();
+  return true;
+}
+
 bool DisplayHandler::PrepareForTask() {
   if (dspState == busy || dspState == uninitialized)
   {

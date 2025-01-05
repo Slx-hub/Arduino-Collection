@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <WebServer.h>
 #include "espserver.h"
 #include "displayhandler.h"
 

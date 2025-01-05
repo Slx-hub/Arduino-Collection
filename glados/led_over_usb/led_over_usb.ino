@@ -23,9 +23,17 @@ int offEventLength = 0;
 
 
 void setup() {
-  SerialUSB.begin(9600);
   pixels.begin();
-  while(!SerialUSB);
+  showAlive(20, 0, 0);
+  Serial.begin(9600);
+  while(!Serial);
+  delay(50);
+  showAlive(8, 30, 0);
+}
+
+void showAlive(int r, int g, int b) {
+  setRGB(127, r, g, b, 0);
+  addOffEvent(millis() + 500, 127);
 }
 
 void loop() {
@@ -36,7 +44,7 @@ void loop() {
   }
 
   //Read new data
-  if (Serial.available() >= 5) {
+  if (Serial.available() >= 6) {
     if (!readValues()) {
       return;
     }
@@ -68,9 +76,17 @@ int monitorAdjust(int val) {
 
 
 void execute() {
+  if (indexByte == 255) {
+    dumpSerial();
+  }
+
   setRGB(indexByte, redByte, greenByte, blueByte, whiteByte);
-  if (timebyte > 0) {
-    addOffEvent(millis() + (timebyte * 100), indexByte);
+  addOffEvent(millis() + (timebyte * 100), indexByte);
+}
+
+void dumpSerial() {
+  while (Serial.available() > 0) {
+    Serial.read();
   }
 }
 

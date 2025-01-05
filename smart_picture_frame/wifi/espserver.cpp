@@ -1,4 +1,6 @@
+#include "WebServer.h"
 #include "espserver.h"
+#include "base64.hpp"
 
 EspServer::~EspServer() {
 };
@@ -33,15 +35,60 @@ void EspServer::ClearDisplay(void) {
 
   if (!server.hasArg("color")) {
     SendJsonResponse(400, "error", "Missing color query parameter");
+    return;
   }
   if (!dspPtr->Clear(server.arg("color"))) {
     SendJsonResponse(500, "error", "Display is busy");
+    return;
+  }
+
+  SendJsonResponse(200, "action", "OK");
+}
+
+uint total = false;
+
+void EspServer::UploadImageChunk(void) {
+  if (server.raw().status == RAW_START) {
+    Serial.println("Request: Display image");
+
+    if (!dspPtr->PrepareImageUpload()) {
+      SendJsonResponse(500, "error", "Display is busy");
+      server.raw().status = RAW_ABORTED;
+    }
+    return;
+  }
+  
+  if (server.raw().status == UPLOAD_FILE_END) {
+    return;
+  }
+
+  Serial.println("Uploading image chunk...");
+  for (int i = 0; i < 20; i++) {
+    Serial.print(server.raw().buf[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  if (!dspPtr->UploadImageChunk(server.raw().buf, server.raw().currentSize)) {
+      SendJsonResponse(500, "error", "An error occured during buffering");
+      server.raw().status = RAW_ABORTED;
+      return;
+  }
+}
+
+void EspServer::FinalizeImageUpload(void) {
+  Serial.println("Displaying image");
+
+  if (!dspPtr->FinalizeImageUpload()) {
+    SendJsonResponse(500, "error", "An error occured during image display");
+    return;
   }
 
   SendJsonResponse(200, "action", "OK");
 }
 
 int EspServer::Init(void) {
+  Serial.println("---------- INIT ----------");
   WiFiManager wm;
 
   if(!wm.autoConnect("Esp32AP","password")) {
@@ -50,9 +97,10 @@ int EspServer::Init(void) {
   }
   Serial.println("Connected to WiFi!");
 
-  server.on("/status", [&](){GetStatus();});  
-  server.on("/clear", [&](){ClearDisplay();});  
-          
+  server.on("/status", [&](){GetStatus();});
+  server.on("/clear", [&](){ClearDisplay();});
+  server.on("/image", HTTP_POST, [&](){FinalizeImageUpload();}, [&](){UploadImageChunk();});
+
   server.begin();
 
   Serial.println("Server up and running!");

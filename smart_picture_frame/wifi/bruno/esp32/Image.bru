@@ -1,0 +1,26 @@
+meta {
+  name: Image
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{host}}/image
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const fs = require('fs');
+  const path = require('path');
+  
+  const attachmentFilename = "hexensteig.glds";
+  const attachmentPath = path.join(bru.cwd(), "test_image_files", attachmentFilename);
+  const attachment = fs.readFileSync(attachmentPath);
+  const attachmentLength = attachment.length;
+  
+  req.setHeader("Content-Type", "application/octet-stream");
+  req.setHeader("Content-Length", attachmentLength);
+  
+  req.setBody(attachment);
+}
