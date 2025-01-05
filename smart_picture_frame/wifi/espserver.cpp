@@ -45,8 +45,6 @@ void EspServer::ClearDisplay(void) {
   SendJsonResponse(200, "action", "OK");
 }
 
-uint total = false;
-
 void EspServer::UploadImageChunk(void) {
   if (server.raw().status == RAW_START) {
     Serial.println("Request: Display image");
@@ -61,13 +59,6 @@ void EspServer::UploadImageChunk(void) {
   if (server.raw().status == UPLOAD_FILE_END) {
     return;
   }
-
-  Serial.println("Uploading image chunk...");
-  for (int i = 0; i < 20; i++) {
-    Serial.print(server.raw().buf[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
 
   if (!dspPtr->UploadImageChunk(server.raw().buf, server.raw().currentSize)) {
       SendJsonResponse(500, "error", "An error occured during buffering");
