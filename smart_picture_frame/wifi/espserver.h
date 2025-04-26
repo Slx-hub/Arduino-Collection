@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
+#include <PubSubClient.h>
 #include "displayhandler.h"
 
 #ifdef HTTP_UPLOAD_BUFLEN //if the macro MEDIAN_MAX_SIZE is defined 
@@ -20,8 +21,9 @@ public:
 private:
   DisplayHandler* dspPtr;
   WebServer server;
-  StaticJsonDocument<1024> jsonDocument;
-  char buffer[1024];
+  PubSubClient mqttClient;
+  StaticJsonDocument<512> jsonDocument;
+  char buffer[512];
 
   void CreateJson(char *tag, char *value);
   void SendJsonResponse(int code, char *tag, char *value);
@@ -30,4 +32,6 @@ private:
   void ClearDisplay(void);
   void FinalizeImageUpload(void);
   void UploadImageChunk(void);
+
+  void Callback(char *topic, byte *payload, unsigned int length);
 };
