@@ -74,7 +74,6 @@ void EspServer::FinalizeImageUpload(void) {
     SendJsonResponse(500, "error", "An error occured during image display");
     return;
   }
-
   SendJsonResponse(200, "action", "OK");
 }
 

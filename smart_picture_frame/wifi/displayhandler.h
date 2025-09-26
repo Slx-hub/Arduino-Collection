@@ -22,6 +22,7 @@ public:
 private:
   Epd epd;
   DisplayState dspState = uninitialized;
+  DisplayState lastState = uninitialized;
 
   bool PrepareForTask();
 };
