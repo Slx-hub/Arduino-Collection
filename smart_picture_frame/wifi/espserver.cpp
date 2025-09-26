@@ -2,11 +2,6 @@
 #include "espserver.h"
 #include "base64.hpp"
 
-// MQTT Broker
-const char *mqtt_broker = "192.168.178.30";
-const int mqtt_port = 1883;
-const char *topic = "hermes/intent/PictureFrame";
-
 EspServer::~EspServer() {
 };
 
@@ -101,35 +96,7 @@ int EspServer::Init(void) {
 
   Serial.println("Server up and running!");
 
-  mqttClient = PubSubClient(server.client());
-
-  mqttClient.setServer(mqtt_broker, mqtt_port);
-  while (!mqttClient.connected()) {
-      String client_id = "esp32-client-";
-      client_id += String(WiFi.macAddress());
-      Serial.printf("The client %s connects to the MQTT broker\n", client_id.c_str());
-      if (mqttClient.connect(client_id.c_str())) {
-          Serial.println("MQTT broker connected");
-      } else {
-          Serial.print("failed with state ");
-          Serial.println(mqttClient.state());
-          delay(2000);
-      }
-  }
-  mqttClient.publish(topic, "{\"input\":\"display image\"}");
-
   return 0;
-}
-
-void EspServer::Callback(char *topic, byte *payload, unsigned int length) {
-    Serial.print("Message arrived in topic: ");
-    Serial.println(topic);
-    Serial.print("Message:");
-    for (int i = 0; i < length; i++) {
-        Serial.print((char) payload[i]);
-    }
-    Serial.println();
-    Serial.println("-----------------------");
 }
 
 void EspServer::SetDisplay(DisplayHandler* ptr) {

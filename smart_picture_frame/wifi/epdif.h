@@ -31,12 +31,12 @@
 #include <arduino.h>
 
 // Pin definition
-#define DC_PIN          10
-#define RST_PIN         11
-#define BUSY_PIN        12
-#define CS_PIN          5
-#define SCK_PIN         6
-#define MOSI_PIN        7
+#define BUSY_PIN        0   // purple
+#define RST_PIN         1   // white
+#define DC_PIN          2   // green
+#define CS_PIN          3   // orange
+#define SCK_PIN         4   // yellow
+#define MOSI_PIN        5   // blue
 
 class EpdIf {
 public:

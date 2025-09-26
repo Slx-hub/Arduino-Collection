@@ -18,7 +18,6 @@ void setup() {
   Serial.println("Initializing e-Paper");
   if (handler.Init() != 0) {
     Serial.println("e-Paper init failed");
-    return;
   }
   server.SetDisplay(&handler);
 
