@@ -2,9 +2,11 @@
 #include <WebServer.h>
 #include "espserver.h"
 #include "displayhandler.h"
+#include "buttonhandler.h"
 
 DisplayHandler handler;
 EspServer server;
+ButtonHandler buttons;
 
 void setup() {
   Serial.begin(115200);
@@ -21,11 +23,15 @@ void setup() {
   }
   server.SetDisplay(&handler);
 
+  Serial.println("Initializing buttons");
+  buttons.Init();
+
   Serial.println("All done!");
 }
 
 void loop() {
   handler.Loop();
   server.Loop();
+  buttons.Loop();
   delay(50);
 }
