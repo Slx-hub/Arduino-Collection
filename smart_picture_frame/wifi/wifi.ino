@@ -32,6 +32,8 @@ void setup() {
 void loop() {
   handler.Loop();
   server.Loop();
-  buttons.Loop();
-  delay(50);
+  if (handler.IsReady()){
+    buttons.Loop();
+  }
+  delay(100);
 }

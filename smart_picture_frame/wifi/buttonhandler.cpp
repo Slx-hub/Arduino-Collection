@@ -35,10 +35,10 @@ void ButtonHandler::HandleButton(int index) {
             SendRequest("picture_frame_display_info_screen");
             break;
         case 2:
-            //SendRequest("");
+            SendRequest("picture_frame_clear_display");
             break;
         case 3:
-            //SendRequest("");
+            SendRequest("picture_frame_clear_display");
             break;
     }
 }

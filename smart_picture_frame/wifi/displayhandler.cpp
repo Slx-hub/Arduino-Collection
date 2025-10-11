@@ -27,11 +27,6 @@ void DisplayHandler::Sleep(void) {
 }
 
 void DisplayHandler::Loop(void) {
-  if (dspState != lastState) {
-    Serial.print("State changed: ");
-    Serial.println(dspState);
-    lastState = dspState;
-  }
   if (dspState == busy && !epd.EPD_7IN3F_IsBusy())
   {
     epd.TurnOffDisplay();

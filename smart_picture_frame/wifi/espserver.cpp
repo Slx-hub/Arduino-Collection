@@ -1,4 +1,3 @@
-#include "WebServer.h"
 #include "espserver.h"
 #include "base64.hpp"
 
@@ -50,8 +49,8 @@ void EspServer::UploadImageChunk(void) {
     Serial.println("Request: Display image");
 
     if (!dspPtr->PrepareImageUpload()) {
-      SendJsonResponse(500, "error", "Display is busy");
       server.raw().status = RAW_ABORTED;
+      SendJsonResponse(500, "error", "Display is busy");
     }
     return;
   }
@@ -61,8 +60,8 @@ void EspServer::UploadImageChunk(void) {
   }
 
   if (!dspPtr->UploadImageChunk(server.raw().buf, server.raw().currentSize)) {
-      SendJsonResponse(500, "error", "An error occured during buffering");
       server.raw().status = RAW_ABORTED;
+      SendJsonResponse(500, "error", "An error occured during buffering");
       return;
   }
 }
@@ -81,15 +80,20 @@ int EspServer::Init(void) {
   Serial.println("---------- INIT ----------");
   WiFiManager wm;
 
+  wm.setConnectTimeout(5);
+  wm.setConfigPortalTimeout(240);
+  wm.setConnectRetries(5);
+
   if(!wm.autoConnect("Esp32AP","password")) {
     Serial.println("Failed to connect to WiFi");
     return -1;
   }
-  Serial.println("Connected to WiFi!");
 
   server.on("/status", [&](){GetStatus();});
   server.on("/clear", [&](){ClearDisplay();});
   server.on("/image", HTTP_POST, [&](){FinalizeImageUpload();}, [&](){UploadImageChunk();});
+
+  ElegantOTA.begin(&server);
 
   server.begin();
 
@@ -104,4 +108,5 @@ void EspServer::SetDisplay(DisplayHandler* ptr) {
 
 void EspServer::Loop(void) {
   server.handleClient();
+  ElegantOTA.loop();
 }

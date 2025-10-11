@@ -1,7 +1,8 @@
 #include <Arduino.h>
-#include <WebServer.h>
-#include <ArduinoJson.h>
 #include <WiFiManager.h>
+#include <WebServer.h>
+#include <ElegantOTA.h>
+#include <ArduinoJson.h>
 #include "displayhandler.h"
 
 #ifdef HTTP_UPLOAD_BUFLEN //if the macro MEDIAN_MAX_SIZE is defined 
