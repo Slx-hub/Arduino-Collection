@@ -6,17 +6,21 @@ DisplayHandler::~DisplayHandler() {
 DisplayHandler::DisplayHandler() {
 };
 
-int DisplayHandler::Init(void) {
-  int code = epd.Init();
-  if (code == 0) {
+bool DisplayHandler::Init(void) {
+  if (epd.Init()) {
     dspState = sleeping;
+    return true;
   }
-  return code;
+  return false;
 }
 
 void DisplayHandler::Wake(void) {
   Serial.println("Waking display");
-  epd.Wake();
+  if (!epd.Wake()) {
+    Serial.println("Failed to wake display");
+    dspState = error;
+    return;
+  }
   dspState = idle;
 }
 
@@ -29,13 +33,16 @@ void DisplayHandler::Sleep(void) {
 void DisplayHandler::Loop(void) {
   if (dspState == busy && !epd.EPD_7IN3F_IsBusy())
   {
-    epd.TurnOffDisplay();
+    if (!epd.TurnOffDisplay()){
+      dspState=error;
+      return;
+    }
     Sleep();
   }
 }
 
 bool DisplayHandler::IsReady(void) {
-  return (dspState != busy && dspState != uninitialized);
+  return (dspState == idle || dspState == sleeping);
 }
 
 bool DisplayHandler::Clear(String colorIndex) {
@@ -44,7 +51,7 @@ bool DisplayHandler::Clear(String colorIndex) {
   }
   unsigned char color = (unsigned char)colorIndex.toInt();
   dspState = busy;
-  epd.Clear(color);
+  if (!epd.Clear(color)){dspState=error;}
 
   return true;
 }
@@ -68,7 +75,10 @@ bool DisplayHandler::FinalizeImageUpload(void) {
     return false;
   }
   dspState = busy;
-  epd.FinalizeImageUpload();
+  if (!epd.FinalizeImageUpload()) {
+    dspState = error;
+    return false;
+  }
   return true;
 }
 

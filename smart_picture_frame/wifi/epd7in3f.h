@@ -58,23 +58,23 @@ class Epd : EpdIf {
 public:
     Epd();
     ~Epd();
-    int  Init(void);
-    int  Wake(void);
-	void EPD_7IN3F_BusyHigh(void);
+    bool  Init(void);
+    bool  Wake(void);
+	bool EPD_7IN3F_BusyHigh(void);
   bool EPD_7IN3F_IsBusy(void);
-	void TurnOnDisplay(void);
-  void TurnOffDisplay(void);
+	bool TurnOnDisplay(void);
+  bool TurnOffDisplay(void);
     void Reset(void);
     void PrepareImageUpload(void);
     void UploadImageChunk(uint8_t *buffer, size_t buffer_size);
-    void FinalizeImageUpload(void);
-    void EPD_7IN3F_Display(const UBYTE *image);
-    void EPD_7IN3F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
+    bool FinalizeImageUpload(void);
+    bool EPD_7IN3F_Display(const UBYTE *image);
+    bool EPD_7IN3F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
                                  UWORD image_width, UWORD image_heigh);
     void SendCommand(unsigned char command);
     void SendData(unsigned char data);
     void Sleep(void);
-    void Clear(UBYTE color);
+    bool Clear(UBYTE color);
 
 private:
     unsigned int reset_pin;

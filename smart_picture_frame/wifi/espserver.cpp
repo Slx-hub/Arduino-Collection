@@ -24,7 +24,16 @@ void EspServer::GetStatus(void) {
   if (status) {
     CreateJson("status", "ready");
   } else {
-    CreateJson("status", "unable");
+    DisplayState state = dspPtr->GetState();
+    if (state == uninitialized) {
+      CreateJson("status", "uninitialized");
+    } else if (state == busy) {
+      CreateJson("status", "busy");
+    } else if (state == error) {
+      CreateJson("status", "error");
+    } else {
+      CreateJson("status", "unknown");
+    }
   }
   server.send(200, "application/json", buffer);
 }

@@ -46,7 +46,18 @@ void ButtonHandler::HandleButton(int index) {
 void ButtonHandler::SendRequest(const char* path) {
     HTTPClient http;
     String url = String("http://192.168.178.30:5123/") + path;
+    
+    http.setTimeout(2000); // 2 second timeout
+    http.setConnectTimeout(1000); // 1 second connection timeout
+    
     http.begin(url);
     int httpCode = http.GET();
+    
+    if (httpCode > 0) {
+        Serial.printf("HTTP GET succeeded, code: %d\n", httpCode);
+    } else {
+        Serial.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
+    }
+    
     http.end();
 }

@@ -48,10 +48,10 @@ Epd::Epd() {
 function :  Sets epaper to writable state after sleep or boot
 parameter:
 ******************************************************************************/
-int Epd::Wake(void) {
+bool Epd::Wake(void) {
     Reset();
     DelayMs(20);
-    EPD_7IN3F_BusyHigh();
+    if (!EPD_7IN3F_BusyHigh()) {return false;}
     
     SendCommand(0xAA);    // CMDH
     SendData(0x49);
@@ -138,16 +138,14 @@ int Epd::Wake(void) {
     SendCommand(0xE6);   // TSSET
     SendData(0x00);
 
-    EPD_7IN3F_BusyHigh();
-
-    return 0;
+    return EPD_7IN3F_BusyHigh();
 }
 
 /******************************************************************************
 function :  Initialize the e-Paper register on startup
 parameter:
 ******************************************************************************/
-int Epd::Init(void) {
+bool Epd::Init(void) {
   return IfInit();
 }
 
@@ -167,11 +165,21 @@ void Epd::SendData(unsigned char data) {
     SpiTransfer(data);
 }
 
-void Epd::EPD_7IN3F_BusyHigh(void)// If BUSYN=0 then waiting
+bool Epd::EPD_7IN3F_BusyHigh(void)// If BUSYN=0 then waiting
 {
+    unsigned long startTime = millis();
+    unsigned long timeout = 60000; // 60 second timeout
+    
     while(!DigitalRead(BUSY_PIN)) {
         DelayMs(10);
+        
+        // Check for timeout
+        if (millis() - startTime > timeout) {
+            Serial.println("WARNING: E-Paper display busy timeout!");
+            return false; // Exit instead of hanging forever
+        }
     }
+    return true;
 }
 
 bool Epd::EPD_7IN3F_IsBusy(void) {
@@ -192,18 +200,20 @@ void Epd::Reset(void) {
     DelayMs(20);    
 }
 
-void Epd::TurnOnDisplay(void) {
+bool Epd::TurnOnDisplay(void) {
     SendCommand(0x04);  // POWER_ON
-    EPD_7IN3F_BusyHigh();
+    if (!EPD_7IN3F_BusyHigh()) {return false;}
     
     SendCommand(0x12);  // DISPLAY_REFRESH
     SendData(0x00);
+
+    return true;
 }
 
-void Epd::TurnOffDisplay(void) {
+bool Epd::TurnOffDisplay(void) {
     SendCommand(0x02);  // POWER_OFF
     SendData(0x00);
-    EPD_7IN3F_BusyHigh();
+    return EPD_7IN3F_BusyHigh();
 }
 
 // My own Methods for pushing chunks into the Displaybuffer
@@ -216,15 +226,15 @@ void Epd::UploadImageChunk(uint8_t *buffer, size_t buffer_size) {
     SendData((unsigned char)buffer[i]);
   }
 }
-void Epd::FinalizeImageUpload(void) {
-  TurnOnDisplay();
+bool Epd::FinalizeImageUpload(void) {
+  return TurnOnDisplay();
 }
 
 /******************************************************************************
 function :  Sends the image buffer in RAM to e-Paper and displays
 parameter:
 ******************************************************************************/
-void Epd::EPD_7IN3F_Display(const UBYTE *image) {
+bool Epd::EPD_7IN3F_Display(const UBYTE *image) {
     unsigned long i,j;
     
     SendCommand(0x10);
@@ -234,14 +244,14 @@ void Epd::EPD_7IN3F_Display(const UBYTE *image) {
 		}
     }
     
-    TurnOnDisplay();
+    return TurnOnDisplay();
 }
 
 /******************************************************************************
 function :  Sends the part image buffer in RAM to e-Paper and displays
 parameter:
 ******************************************************************************/
-void Epd::EPD_7IN3F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
+bool Epd::EPD_7IN3F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart, 
                                         UWORD image_width, UWORD image_heigh)
 {
     unsigned long i,j;
@@ -258,14 +268,14 @@ void Epd::EPD_7IN3F_Display_part(const UBYTE *image, UWORD xstart, UWORD ystart,
 		}
     }
 
-    TurnOnDisplay();
+    return TurnOnDisplay();
 }
 
 /******************************************************************************
 function : 
       Clear screen
 ******************************************************************************/
-void Epd::Clear(UBYTE color) {
+bool Epd::Clear(UBYTE color) {
     SendCommand(0x10);
     for(int i=0; i<width/2; i++) {
         for(int j=0; j<height; j++) {
@@ -273,7 +283,7 @@ void Epd::Clear(UBYTE color) {
 		}
 	}
     
-    TurnOnDisplay();
+    return TurnOnDisplay();
 }
 
 /**

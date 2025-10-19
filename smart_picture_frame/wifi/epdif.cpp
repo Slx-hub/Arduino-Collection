@@ -52,14 +52,14 @@ void EpdIf::SpiTransfer(unsigned char data) {
     digitalWrite(CS_PIN, HIGH);
 }
 
-int EpdIf::IfInit(void) {
+bool EpdIf::IfInit(void) {
     pinMode(CS_PIN, OUTPUT);
     pinMode(RST_PIN, OUTPUT);
     pinMode(DC_PIN, OUTPUT);
     pinMode(BUSY_PIN, INPUT);
     SPI.begin(SCK_PIN, -1, MOSI_PIN, CS_PIN);
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
-    
-    return 0;
+
+    return true;
 }
 

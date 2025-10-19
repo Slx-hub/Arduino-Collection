@@ -3,14 +3,14 @@
 
 #include "epd7in3f.h"
 
-enum DisplayState { uninitialized, idle, busy, sleeping };
+enum DisplayState { uninitialized, idle, busy, sleeping, error };
 
 class DisplayHandler {
 public:
   DisplayHandler(void);
   ~DisplayHandler(void);
 
-  int  Init(void);
+  bool  Init(void);
   void Wake(void);
   void Sleep(void);
   void Loop(void);
@@ -19,6 +19,7 @@ public:
   bool PrepareImageUpload(void);
   bool UploadImageChunk(uint8_t *buffer, size_t buffer_size);
   bool FinalizeImageUpload(void);
+  DisplayState GetState(void) { return dspState; }
 private:
   Epd epd;
   DisplayState dspState = uninitialized;
