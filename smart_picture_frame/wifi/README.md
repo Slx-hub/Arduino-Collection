@@ -1,13 +1,82 @@
 # Smart Picture Frame WiFi Controller
 
-Arduino sketch for ESP32-C6 that controls a 7.3" e-Paper display with WiFi connectivity.
+Arduino sketch for the Seeed XIAO ESP32-C6 that drives a 7.3" 7-colour e-Paper
+display, fed by a smarthome over HTTP.
 
 ## Hardware Requirements
 
-- **Microcontroller**: ESP32-C6
-- **Display**: 7.3" e-Paper (F) display
+- **Microcontroller**: Seeed Studio XIAO ESP32-C6
+- **Display**: Waveshare 7.3" e-Paper (F), 800x480, 7 colours
 - **Power**: Stable 3.3V supply (recommended: USB-C or quality battery pack)
-- **Buttons**: 4 GPIO buttons (pins 21, 22, 23, 16)
+- **Buttons**: 4 buttons to GND, wired `INPUT_PULLUP` (active low)
+
+## Wiring
+
+Display pins are set in `epdif.h`, button pins in `buttonhandler.cpp`.
+
+| Signal | GPIO | XIAO pin | Wire colour |
+| --- | --- | --- | --- |
+| BUSY | 0 | D0 | purple |
+| RST | 1 | D1 | white |
+| DC | 2 | D2 | green |
+| CS | 20 | D9 | orange |
+| SCK | 19 | D8 | yellow |
+| MOSI | 18 | D10 | blue |
+| Button 0 | 21 | D3 | |
+| Button 1 | 22 | D4 | |
+| Button 2 | 23 | D5 | |
+| Button 3 | 16 | D6 | |
+
+MISO is unused: the panel is write-only, so `SPI.begin()` is called with `-1` for it.
+That frees GPIO20 to serve as CS. **GPIO17 (D7) is the only unused pin on the header.**
+
+> Note: GPIO16 is UART0 TX on the ESP32-C6, so `Serial0` is unavailable while
+> button 3 is wired. This is harmless here -- the board builds with USB CDC on
+> boot, so `Serial` is the USB Serial/JTAG peripheral and logging is unaffected.
+
+## Buttons
+
+| Button | Pin | Action |
+| --- | --- | --- |
+| 0 | 21 | Ask smarthome for a new image (`picture_frame_display_image`) |
+| 1 | 22 | Ask smarthome for the info screen (`picture_frame_display_info_screen`) |
+| 2 | 23 | Ask smarthome for the special action (`picture_frame_special_action`) |
+| 3 | 16 | Clear display to white -- handled locally, no network needed |
+
+Buttons 0-2 send an HTTP GET to the smarthome at `http://192.168.178.30:5123/` and
+are ignored while the display is not ready. Button 3 never touches the network so a
+stuck image can always be cleared, even with wifi or the smarthome down. A clear
+asked for while the panel is refreshing or resting is queued, not dropped.
+
+All buttons share a 10s debounce cooldown.
+
+## Panel Timing
+
+A refresh takes ~30s and the panel then rests for 2 minutes. `DisplayHandler`
+enforces that rest: `IsReady()` stays false for the whole period and every refresh
+path is refused until it elapses, so nothing can drive the panel back to back.
+`/status` reports `resting` during that window.
+
+## Offline Diagnostic Screen
+
+The display, buttons and the network come up in that order, and nothing aborts
+`setup()`, so the panel is usable even with no wifi. The config portal runs
+non-blocking so `loop()` keeps servicing buttons while it is up.
+
+If the portal expires without a connection, the frame draws a failure screen once,
+naming the SSID, the reason from `WiFi.status()`, and how to get back into setup.
+It is drawn a single time, only after the network state has settled, and it waits
+out the rest period rather than forcing a refresh. Text is rendered locally from
+`font5x7.h` -- one 400-byte scanline at a time, since a full 800x480 frame is 192KB
+and will not allocate next to the 200KB upload buffer.
+
+`font5x7.h` is generated; the glyphs are authored as ASCII art in
+`genfont.py` (run it from this directory to regenerate).
+
+> `WiFiManager` is built inside `EspServer::Init()` rather than being a member.
+> `EspServer` is a global, so a member would run its constructor during static
+> init -- before `nvs_flash_init()` and before USB CDC comes up -- which crashes
+> the board before it can print anything at all.
 
 ## Project Setup
 
@@ -23,87 +92,130 @@ Open **Library Manager** (Sketch → Include Library → Manage Libraries) and i
 - `WiFiManager` by tzapu
 - `ArduinoJson` by bblanchon
 - `ElegantOTA` by ayushsharma82
-- `WebServer` (built-in, may need to verify)
+- `base64` by Densaugeo (used by `espserver.cpp`)
+
+`WebServer` ships with the ESP32 core, no install needed.
 
 ### 3. Select Board & Port
-- **Tools** → **Board** → **ESP32** → **ESP32-C6**
+- **Tools** → **Board** → **ESP32** → **XIAO_ESP32C6**
 - **Tools** → **Port** → Select your device's COM port
-
-### 4. Configure Pins (if needed)
-Edit `epdif.h` to match your wiring if pins differ from:
-- CS: GPIO 17
-- MOSI: GPIO 11
-- SCK: GPIO 12
-- RST: GPIO 8
-- DC: GPIO 9
-- BUSY: GPIO 10
+- Leave **USB CDC On Boot** at *Enabled* (the default); `Serial` is the USB
+  Serial/JTAG peripheral, not UART0.
 
 ## Building & Uploading
 
+From the IDE: open `wifi.ino`, click Upload, then open the Serial Monitor.
+
+From the command line -- `arduino-cli` is not on PATH but ships inside the IDE:
+
+```sh
+CLI="$LOCALAPPDATA/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
+
+"$CLI" compile --fqbn esp32:esp32:XIAO_ESP32C6 .
+"$CLI" upload -p COM3 --fqbn esp32:esp32:XIAO_ESP32C6 .
+"$CLI" monitor -p COM3 -c baudrate=115200
 ```
-1. Open wifi.ino in Arduino IDE
-2. Click Upload button (or Sketch → Upload)
-3. Watch Serial Monitor for initialization messages
-```
+
+> **Close the Arduino IDE first.** It holds the serial port, and both upload and
+> monitor fail with `PermissionError(13, 'Access is denied')` while it is running.
+
+The sketch uses ~94% of the 1.2MB app partition. There is little headroom left,
+and an OTA update has to fit the second partition, so watch the size when adding
+code.
 
 ## WiFi Connection
 
-On first boot, the ESP32 creates an access point:
+On first boot, or when the saved network cannot be reached, the ESP32 creates an
+access point:
 - **SSID**: `Esp32AP`
 - **Password**: `password`
+- **Portal**: `http://192.168.4.1`
 
-Connect to this network, then it will prompt you to select your home WiFi network.
+Connect to it and pick your home WiFi. The portal is non-blocking and gives up
+after 4 minutes, after which the frame draws the offline diagnostic screen and
+needs a power cycle to offer setup again.
 
 ## Web Server Endpoints
 
-The device runs a local web server with these endpoints:
+The device runs a web server on **port 80**:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/status` | GET | Check if display is ready |
-| `/clear` | GET | Clear display (query param: `color=0-7`) |
+| `/status` | GET | `ready`, `busy`, `resting`, `uninitialized` or `error` |
+| `/clear` | GET | Clear display (query param: `color=0-6`) |
 | `/image` | POST | Upload image data to display |
+| `/update` | GET | ElegantOTA firmware upload page |
+
+Colour indices are in `epd7in3f.h`: 0 black, 1 white, 2 green, 3 blue, 4 red,
+5 yellow, 6 orange. Index 7 is documented by Waveshare as unusable (afterimage).
+
+A Bruno collection for these endpoints lives in `bruno/esp32/`.
 
 ## OTA Updates (Over-The-Air)
 
-Once connected to WiFi, you can update the firmware wirelessly:
+Once connected to WiFi, browse to `http://<ESP32_IP>/update` and upload the
+compiled `.bin`. Export one with **Sketch** → **Export Compiled Binary**, or take
+`build/esp32.esp32.XIAO_ESP32C6/wifi.ino.bin` after a command-line compile.
 
-1. In Arduino IDE: **Tools** → **ElegantOTA**
-2. Enter the ESP32's IP address (shown in Serial Monitor on boot)
-3. Select your sketch and click **Upload**
-
-Alternatively, navigate to `http://<ESP32_IP>:8080/update` in a web browser and upload the compiled `.bin` file.
+The IP is printed on boot (`Server up and running on ...`).
 
 ## Troubleshooting
 
-**Device becomes unresponsive:**
-- Check power supply stability (use USB-C or quality power bank)
-- Watchdog timer will auto-reset after 60 seconds if no response
-- Check Serial Monitor for debug messages
+**No serial output at all, not even the `ESP-ROM:` banner:**
+- That banner comes from the mask ROM before any user code, so nothing in
+  `setup()` can suppress it. Suspect a crashing global constructor instead --
+  see the `WiFiManager` note above.
+- Also check the Arduino IDE is not holding the port.
+
+**Serial monitor shows nothing after a reset:**
+- The USB Serial/JTAG device re-enumerates on every reset. A monitor that does
+  not reconnect will silently show an empty window.
 
 **WiFi won't connect:**
-- Reset WiFi settings by holding button for 10+ seconds
-- Check SSID and password are correct
-- Try moving closer to router
+- Watch the boot log for the `*wm:` lines; they name the SSID and attempt count.
+- `setConnectTimeout` is 20s. Shorter values cause
+  `sta is connecting, cannot set config` -- the retry fires while the previous
+  attempt is still associating and is rejected, wasting every retry.
+- To re-run setup, power cycle and join `Esp32AP`.
 
 **Display not updating:**
-- Check display BUSY pin (GPIO 10) is not stuck LOW
-- Verify SPI pins are correctly wired
-- Try power cycling the device
+- Check the BUSY pin (GPIO0) is not stuck LOW.
+- Check `/status`: `resting` means the 2 minute rest period has not elapsed.
+- Verify SPI wiring against the table above.
 
 ## Serial Monitor Output
 
-Open **Tools** → **Serial Monitor** (115200 baud) to see debug information and status messages.
+115200 baud. `Serial` is the USB Serial/JTAG peripheral (the board enumerates as
+`VID_303A&PID_1001`), so the log arrives over the same USB-C cable used for
+flashing.
+
+A healthy boot looks like:
+
+```
+Initializing e-Paper
+Initializing buttons
+Initializing server
+---------- INIT ----------
+*wm:AutoConnect
+*wm:Connecting to SAVED AP: <your ssid>
+*wm:AutoConnect: SUCCESS
+*wm:STA IP Address: 192.168.178.42
+Server up and running on 192.168.178.42
+All done!
+```
 
 ## File Structure
 
 ```
 wifi.ino              - Main sketch with setup() and loop()
-espserver.cpp/h       - WiFi server and HTTP endpoints
-displayhandler.cpp/h  - E-Paper display control
+espserver.cpp/h       - WiFi, config portal and HTTP endpoints
+displayhandler.cpp/h  - E-Paper state machine, rest period, text rendering
 buttonhandler.cpp/h   - Button input handling
+font5x7.h             - Generated 5x7 bitmap font for the diagnostic screen
+genfont.py            - Authors and regenerates font5x7.h
 epd7in3f.cpp/h        - E-Paper driver
 epdif.cpp/h           - SPI interface
+bruno/esp32/          - Bruno HTTP collection and test images
 ```
 
 ## License
