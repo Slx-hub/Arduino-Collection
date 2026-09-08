@@ -37,6 +37,7 @@ void setup() {
     Serial.println("WiFi not up yet, carrying on so the buttons still work");
   }
   server.SetDisplay(&handler);
+  server.SetButtons(&buttons);
 
   Serial.println("All done!");
 }

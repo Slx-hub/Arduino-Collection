@@ -141,10 +141,34 @@ The device runs a web server on **port 80**:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/status` | GET | `ready`, `busy`, `resting`, `uninitialized` or `error` |
+| `/status` | GET | Panel state plus diagnostics, see below |
 | `/clear` | GET | Clear display (query param: `color=0-6`) |
-| `/image` | POST | Upload image data to display |
+| `/image` | POST | Upload one full 192000 byte frame |
 | `/update` | GET | ElegantOTA firmware upload page |
+
+`/status` returns:
+
+```json
+{"status":"ready","uptime_s":41,"refreshes":3,"last_refresh":"image",
+ "rest_left_s":0,"buttons_down":0}
+```
+
+- `status` -- `ready`, `busy`, `resting`, `uninitialized` or `error`
+- `uptime_s` -- resets on reboot, so a crash loop is visible remotely
+- `refreshes` / `last_refresh` -- how many panel refreshes since boot and what
+  caused the last one: `image`, `http-clear`, `button-clear`, `deferred-clear`
+  or `diagnostic`. This is how a stray refresh gets traced without a cable.
+- `rest_left_s` -- seconds until the panel will accept another refresh
+- `buttons_down` -- raw pin bitmask, bit per button, 1 = reading pressed. A bit
+  set with nobody at the frame means a stuck or noisy line.
+
+Error responses:
+
+- `503` from `/clear` or `/image` -- panel busy or resting, body says how long
+  to wait. Retry then rather than immediately.
+- `422` from `/image` -- fewer than 192000 bytes arrived. **The panel is left
+  untouched.** Triggering a refresh paints whatever is already in panel RAM, so
+  a truncated upload used to wipe the picture to white and report `200 OK`.
 
 Colour indices are in `epd7in3f.h`: 0 black, 1 white, 2 green, 3 blue, 4 red,
 5 yellow, 6 orange. Index 7 is documented by Waveshare as unusable (afterimage).
@@ -182,6 +206,15 @@ The IP is printed on boot (`Server up and running on ...`).
 - Check the BUSY pin (GPIO0) is not stuck LOW.
 - Check `/status`: `resting` means the 2 minute rest period has not elapsed.
 - Verify SPI wiring against the table above.
+
+**Panel goes white on its own:**
+- Check `/status` `last_refresh`. `image` with a `422` in the client log means a
+  truncated upload; `deferred-clear` or `button-clear` with nobody at the frame
+  means a phantom press on a button line.
+- `buttons_down` non-zero at idle means a stuck or noisy button line. Buttons
+  are not sampled while the panel refreshes, and a press must read low across
+  three consecutive samples, because the refresh couples noise into long button
+  wires and a single spurious low on button 3 wipes the screen.
 
 ## Serial Monitor Output
 

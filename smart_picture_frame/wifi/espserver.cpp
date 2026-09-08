@@ -24,24 +24,47 @@ void EspServer::CreateJson(char *tag, char *value) {
 
 void EspServer::GetStatus(void) {
   Serial.println("Request: Check status");
-  bool status = dspPtr->IsReady();
-  if (status) {
-    CreateJson("status", "ready");
+
+  const char *status = "unknown";
+  if (dspPtr->IsReady()) {
+    status = "ready";
   } else {
-    DisplayState state = dspPtr->GetState();
-    if (state == uninitialized) {
-      CreateJson("status", "uninitialized");
-    } else if (state == busy) {
-      CreateJson("status", "busy");
-    } else if (state == error) {
-      CreateJson("status", "error");
-    } else if (dspPtr->IsResting()) {
-      CreateJson("status", "resting");
-    } else {
-      CreateJson("status", "unknown");
+    switch (dspPtr->GetState()) {
+      case uninitialized: status = "uninitialized"; break;
+      case busy:          status = "busy"; break;
+      case error:         status = "error"; break;
+      default:            status = dspPtr->IsResting() ? "resting" : "unknown"; break;
     }
   }
+
+  // uptime exposes reboots and refresh/last_refresh trace a stray refresh back to
+  // its trigger, both of which otherwise need a serial cable to see
+  jsonDocument.clear();
+  jsonDocument["status"] = status;
+  jsonDocument["uptime_s"] = millis() / 1000;
+  jsonDocument["refreshes"] = dspPtr->GetRefreshCount();
+  jsonDocument["last_refresh"] = dspPtr->GetLastSourceName();
+  jsonDocument["rest_left_s"] = dspPtr->RestRemaining() / 1000;
+  // a button reading pressed here with nobody at the frame means a stuck or
+  // noisy line, which is what phantom clears look like
+  jsonDocument["buttons_down"] = btnPtr != NULL ? btnPtr->GetRawMask() : 0;
+  serializeJson(jsonDocument, buffer);
+
   server.send(200, "application/json", buffer);
+}
+
+// Tells the caller how long to wait, so the smarthome can retry at the right
+// time instead of hammering a panel that is mid-refresh or resting.
+void EspServer::SendBusyResponse(void) {
+  char msg[96];
+  if (dspPtr->IsResting()) {
+    snprintf(msg, sizeof(msg), "Panel resting, retry in %lus",
+             dspPtr->RestRemaining() / 1000);
+    SendJsonResponse(503, "error", msg);
+    return;
+  }
+  snprintf(msg, sizeof(msg), "Display is busy");
+  SendJsonResponse(503, "error", msg);
 }
 
 void EspServer::ClearDisplay(void) {
@@ -51,8 +74,10 @@ void EspServer::ClearDisplay(void) {
     SendJsonResponse(400, "error", "Missing color query parameter");
     return;
   }
-  if (!dspPtr->Clear((unsigned char)server.arg("color").toInt())) {
-    SendJsonResponse(500, "error", "Display is busy");
+  // deliberately the non-queueing call: a deferred clear would fire up to two
+  // minutes later and wipe whatever was drawn in the meantime
+  if (!dspPtr->Clear((unsigned char)server.arg("color").toInt(), srcHttpClear)) {
+    SendBusyResponse();
     return;
   }
 
@@ -62,21 +87,27 @@ void EspServer::ClearDisplay(void) {
 void EspServer::UploadImageChunk(void) {
   if (server.raw().status == RAW_START) {
     Serial.println("Request: Display image");
+    uploadResponded = false;
 
     if (!dspPtr->PrepareImageUpload()) {
       server.raw().status = RAW_ABORTED;
-      SendJsonResponse(500, "error", "Display is busy");
+      SendBusyResponse();
+      uploadResponded = true;
     }
     return;
   }
-  
+
   if (server.raw().status == UPLOAD_FILE_END) {
     return;
   }
 
   if (!dspPtr->UploadImageChunk(server.raw().buf, server.raw().currentSize)) {
       server.raw().status = RAW_ABORTED;
-      SendJsonResponse(500, "error", "An error occured during buffering");
+      dspPtr->AbortImageUpload();
+      if (!uploadResponded) {
+        SendJsonResponse(500, "error", "An error occured during buffering");
+        uploadResponded = true;
+      }
       return;
   }
 }
@@ -85,10 +116,19 @@ void EspServer::FinalizeImageUpload(void) {
   Serial.println("Displaying image");
 
   if (!dspPtr->FinalizeImageUpload()) {
-    SendJsonResponse(500, "error", "An error occured during image display");
+    // the raw handler already answered when it rejected the upload; a second
+    // response on the same request corrupts the reply the client reads
+    if (!uploadResponded) {
+      char msg[96];
+      snprintf(msg, sizeof(msg), "Incomplete image: %u of %u bytes",
+               (unsigned)dspPtr->GetUploadedBytes(), (unsigned)DisplayHandler::imageBytes);
+      SendJsonResponse(422, "error", msg);
+      uploadResponded = true;
+    }
     return;
   }
   SendJsonResponse(200, "action", "OK");
+  uploadResponded = true;
 }
 
 int EspServer::Init(void) {
@@ -145,6 +185,10 @@ const char* EspServer::GetFailureReason(void) {
 
 void EspServer::SetDisplay(DisplayHandler* ptr) {
   dspPtr = ptr;
+}
+
+void EspServer::SetButtons(ButtonHandler* ptr) {
+  btnPtr = ptr;
 }
 
 void EspServer::Loop(void) {

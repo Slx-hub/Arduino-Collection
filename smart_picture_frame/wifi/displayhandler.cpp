@@ -46,7 +46,7 @@ void DisplayHandler::Loop(void) {
   if (clearPending && dspState != busy && !IsResting()) {
     clearPending = false;
     Serial.println("Running deferred clear");
-    StartClear(pendingClearColor);
+    StartClear(pendingClearColor, srcDeferredClear);
   }
 }
 
@@ -65,13 +65,17 @@ unsigned long DisplayHandler::RestRemaining(void) {
   return restPeriod - (millis() - lastRefreshEnd);
 }
 
-bool DisplayHandler::Clear(unsigned char color) {
+bool DisplayHandler::Clear(unsigned char color, RefreshSource source) {
+  return StartClear(color, source);
+}
+
+bool DisplayHandler::ClearWhenPossible(unsigned char color, RefreshSource source) {
   if (dspState == uninitialized) {
     return false;
   }
 
-  // never drop a clear: if the panel is mid-refresh or resting, remember it and
-  // let Loop() run it once the panel is allowed to refresh again
+  // the button must never be dropped: if the panel is mid-refresh or resting,
+  // remember it and let Loop() run it once the panel may refresh again
   if (dspState == busy || IsResting()) {
     pendingClearColor = color;
     clearPending = true;
@@ -79,17 +83,35 @@ bool DisplayHandler::Clear(unsigned char color) {
     return true;
   }
 
-  return StartClear(color);
+  return StartClear(color, source);
 }
 
-bool DisplayHandler::StartClear(unsigned char color) {
+bool DisplayHandler::StartClear(unsigned char color, RefreshSource source) {
   if (!PrepareForTask()) {
     return false;
   }
+  NoteRefresh(source);
   dspState = busy;
   if (!epd.Clear(color)){dspState=error;}
 
   return true;
+}
+
+void DisplayHandler::NoteRefresh(RefreshSource source) {
+  lastSource = source;
+  refreshCount++;
+  Serial.printf("Refresh #%lu source=%s\n", refreshCount, GetLastSourceName());
+}
+
+const char* DisplayHandler::GetLastSourceName(void) {
+  switch (lastSource) {
+    case srcHttpClear:     return "http-clear";
+    case srcButtonClear:   return "button-clear";
+    case srcDeferredClear: return "deferred-clear";
+    case srcImage:         return "image";
+    case srcDiagnostic:    return "diagnostic";
+    default:               return "none";
+  }
 }
 
 bool DisplayHandler::ShowMessage(const char* const* lines, int lineCount, unsigned char fg, unsigned char bg) {
@@ -118,6 +140,7 @@ bool DisplayHandler::ShowMessage(const char* const* lines, int lineCount, unsign
     epd.UploadImageChunk(row, sizeof(row));
   }
 
+  NoteRefresh(srcDiagnostic);
   dspState = busy;
   if (!epd.FinalizeImageUpload()) {
     dspState = error;
@@ -186,25 +209,64 @@ bool DisplayHandler::PrepareImageUpload(void) {
     return false;
   }
   epd.PrepareImageUpload();
+  uploadActive = true;
+  uploadedBytes = 0;
   return true;
 }
+
 bool DisplayHandler::UploadImageChunk(uint8_t *buffer, size_t buffer_size) {
-  if (dspState != idle) {
+  if (!uploadActive || dspState != idle) {
     return false;
   }
   epd.UploadImageChunk(buffer, buffer_size);
+  uploadedBytes += buffer_size;
   return true;
 }
+
 bool DisplayHandler::FinalizeImageUpload(void) {
-  if (!PrepareForTask()) {
+  // Triggering a refresh here paints whatever the panel already holds, so a
+  // rejected or truncated upload would wipe the picture and report success.
+  if (!uploadActive) {
+    Serial.println("Image finalize with no upload staged, refusing");
     return false;
   }
+
+  if (uploadedBytes != imageBytes) {
+    Serial.printf("Image truncated: %u of %u bytes, refusing\n",
+                  (unsigned)uploadedBytes, (unsigned)imageBytes);
+    AbortImageUpload();
+    return false;
+  }
+
+  // deliberately not PrepareForTask(): waking a sleeping panel resets it and
+  // would discard the frame we just streamed
+  if (dspState != idle) {
+    AbortImageUpload();
+    return false;
+  }
+
+  uploadActive = false;
+  uploadedBytes = 0;
+  NoteRefresh(srcImage);
   dspState = busy;
   if (!epd.FinalizeImageUpload()) {
     dspState = error;
     return false;
   }
   return true;
+}
+
+void DisplayHandler::AbortImageUpload(void) {
+  if (!uploadActive) {
+    return;
+  }
+  uploadActive = false;
+  uploadedBytes = 0;
+  // the panel was left part way through a 0x10 write; park it so the next
+  // upload starts from a clean command rather than appending to a stale one
+  if (dspState == idle) {
+    Sleep();
+  }
 }
 
 bool DisplayHandler::PrepareForTask() {

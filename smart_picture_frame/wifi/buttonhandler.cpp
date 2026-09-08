@@ -16,15 +16,39 @@ void ButtonHandler::SetDisplay(DisplayHandler* ptr) {
     dspPtr = ptr;
 }
 
+uint8_t ButtonHandler::GetRawMask(void) {
+    uint8_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        if (digitalRead(BUTTON_PINS[i]) == LOW) {
+            mask |= (uint8_t)(1 << i);
+        }
+    }
+    return mask;
+}
+
 void ButtonHandler::Loop() {
     unsigned long now = millis();
 
-    // only check if cooldown has passed
+    // Never sample while the panel is refreshing: that is the high current
+    // window where the phantom presses came from, and a press is useless then
+    // anyway since every action would be refused.
+    bool quiet = (dspPtr == NULL) || (dspPtr->GetState() != busy);
+
+    for (int i = 0; i < 4; i++) {
+        if (quiet && digitalRead(BUTTON_PINS[i]) == LOW) {
+            lowStreak[i]++;
+        } else {
+            lowStreak[i] = 0; // a single high read means it was not a real press
+        }
+    }
+
+    // only act if cooldown has passed
     if (now - lastPressTime < debounceDelay) return;
 
     for (int i = 0; i < 4; i++) {
-        if (digitalRead(BUTTON_PINS[i]) == LOW) { // button pressed
+        if (lowStreak[i] >= stableSamples) {
             lastPressTime = now;
+            lowStreak[i] = 0;
             HandleButton(i);
             break; // only handle one button at a time
         }
@@ -61,7 +85,7 @@ void ButtonHandler::ClearDisplay(void) {
         return;
     }
 
-    if (!dspPtr->Clear(EPD_7IN3F_WHITE)) {
+    if (!dspPtr->ClearWhenPossible(EPD_7IN3F_WHITE, srcButtonClear)) {
         Serial.println("Clear rejected, display is busy or uninitialized");
         return;
     }

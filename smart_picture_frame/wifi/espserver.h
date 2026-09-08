@@ -4,6 +4,7 @@
 #include <ElegantOTA.h>
 #include <ArduinoJson.h>
 #include "displayhandler.h"
+#include "buttonhandler.h"
 
 #ifdef HTTP_UPLOAD_BUFLEN //if the macro MEDIAN_MAX_SIZE is defined
 #undef HTTP_UPLOAD_BUFLEN //un-define it
@@ -21,6 +22,7 @@ public:
 
   int  Init(void);
   void SetDisplay(DisplayHandler* ptr);
+  void SetButtons(ButtonHandler* ptr);
   void Loop(void);
 
   NetState GetNetState(void) { return netState; }
@@ -31,6 +33,7 @@ public:
   static const char* AP_PORTAL_IP;
 private:
   DisplayHandler* dspPtr;
+  ButtonHandler* btnPtr = NULL;
   // built in Init(), not here: EspServer is a global, and a WiFiManager member
   // would run its constructor during static init, before nvs_flash_init() and
   // before USB CDC is up. It still has to outlive Init() for the portal to be
@@ -38,6 +41,9 @@ private:
   WiFiManager* wm = nullptr;
   NetState netState = netPortal;
   bool started = false;
+  // the raw upload handler and the main handler can both try to answer one
+  // request; only the first reply is valid
+  bool uploadResponded = false;
   WebServer server;
   StaticJsonDocument<512> jsonDocument;
   char buffer[512];
@@ -47,6 +53,7 @@ private:
 
   void StartServer(void);
 
+  void SendBusyResponse(void);
   void GetStatus(void);
   void ClearDisplay(void);
   void FinalizeImageUpload(void);
