@@ -80,7 +80,36 @@ bool ShowNetworkDiagnostic(void) {
 void loop() {
   handler.Loop();
   server.Loop();
-  buttons.Loop();
+
+  /* ------------------------------------------------------------------------
+   * DO NOT REMOVE THIS GATE. DO NOT "SIMPLIFY" IT TO buttons.Loop().
+   *
+   * Sampling buttons outside the display-ready state kills the WiFi stack.
+   * The board keeps running but drops off the network entirely -- no ping, no
+   * ARP entry -- and only a power cycle brings it back.
+   *
+   * History, so nobody has to rediscover this a third time:
+   *   46d830a  buttons added, loop was unconditional  -> network kept dying
+   *   1e12519  this gate added                        -> fixed, stable 11 months
+   *   41ebdbf  gate removed (thought it was pointless)-> died again within a day
+   *   this     gate restored
+   *
+   * Mechanism is not fully pinned down, which is exactly why it stays. The
+   * leading theory: a press detected mid-refresh calls SendRequest(), so a
+   * WiFi TX burst lands on top of the panel's refresh current draw and browns
+   * out the RF section without resetting the CPU.
+   *
+   * If you need the buttons live in more states, do NOT widen this condition.
+   * Add the state to DisplayHandler and prove on hardware that the frame
+   * survives several days first.
+   *
+   * The error state is the single deliberate exception: no refresh is running
+   * there, and SendRequest() bails on !IsReady(), so only the local clear can
+   * fire and nothing touches the radio.
+   * ---------------------------------------------------------------------- */
+  if (handler.IsReady() || handler.GetState() == error) {
+    buttons.Loop();
+  }
 
   if (!diagnosticShown && server.GetNetState() == netFailed) {
     diagnosticShown = ShowNetworkDiagnostic();

@@ -48,6 +48,9 @@ void EspServer::GetStatus(void) {
   // a button reading pressed here with nobody at the frame means a stuck or
   // noisy line, which is what phantom clears look like
   jsonDocument["buttons_down"] = btnPtr != NULL ? btnPtr->GetRawMask() : 0;
+  // rssi separates "weak signal" from "something else killed the link"
+  jsonDocument["rssi"] = WiFi.RSSI();
+  jsonDocument["wifi_drops"] = wifiDrops;
   serializeJson(jsonDocument, buffer);
 
   server.send(200, "application/json", buffer);
@@ -169,6 +172,46 @@ void EspServer::StartServer(void) {
 
   netState = netConnected;
   started = true;
+  lastConnectedMs = millis();
+  // the core does not always keep this on across a WiFiManager connect
+  WiFi.setAutoReconnect(true);
+}
+
+void EspServer::SuperviseWifi(void) {
+  unsigned long now = millis();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    if (reconnectAttempts > 0) {
+      Serial.printf("WiFi back after %d attempts\n", reconnectAttempts);
+    }
+    lastConnectedMs = now;
+    reconnectAttempts = 0;
+    return;
+  }
+
+  // a brief drop usually recovers on its own; only step in once it persists
+  if (now - lastConnectedMs < disconnectGraceMs) {
+    return;
+  }
+  if (reconnectAttempts > 0 && now - lastReconnectMs < reconnectIntervalMs) {
+    return;
+  }
+
+  if (reconnectAttempts == 0) {
+    wifiDrops++;
+  }
+  lastReconnectMs = now;
+  reconnectAttempts++;
+  Serial.printf("WiFi down %lus, reconnect attempt %d of %d\n",
+                (now - lastConnectedMs) / 1000, reconnectAttempts, maxReconnectAttempts);
+  WiFi.reconnect();
+
+  if (reconnectAttempts >= maxReconnectAttempts) {
+    // out of options: a reboot re-runs autoConnect and, failing that, the portal
+    Serial.println("WiFi unrecoverable, restarting");
+    Serial.flush();
+    ESP.restart();
+  }
 }
 
 const char* EspServer::GetFailureReason(void) {
@@ -207,6 +250,8 @@ void EspServer::Loop(void) {
     }
     return;
   }
+  SuperviseWifi();
+
   server.handleClient();
   ElegantOTA.loop();
 }

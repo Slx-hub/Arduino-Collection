@@ -1,4 +1,10 @@
 // buttonhandler.cpp
+//
+// WARNING: ButtonHandler::Loop() must only be called while the display is ready
+// (or in the error state). See the gate in wifi.ino's loop() and the comment
+// above it -- calling it unconditionally kills the WiFi stack and the board
+// silently leaves the network until it is power cycled. This cost two separate
+// debugging sessions, eleven months apart. Do not call it from anywhere else.
 #include "buttonhandler.h"
 
 // Pin 16 is UART0 TX on the ESP32-C6, so Serial0 is unavailable while it is wired

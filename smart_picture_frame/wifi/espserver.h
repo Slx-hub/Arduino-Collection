@@ -44,6 +44,15 @@ private:
   // the raw upload handler and the main handler can both try to answer one
   // request; only the first reply is valid
   bool uploadResponded = false;
+
+  // link supervision
+  static const unsigned long disconnectGraceMs = 30000;   // let short blips self heal
+  static const unsigned long reconnectIntervalMs = 15000;
+  static const int maxReconnectAttempts = 8;              // ~2 min, then reboot
+  unsigned long lastConnectedMs = 0;
+  unsigned long lastReconnectMs = 0;
+  int reconnectAttempts = 0;
+  unsigned long wifiDrops = 0;
   WebServer server;
   StaticJsonDocument<512> jsonDocument;
   char buffer[512];
@@ -53,6 +62,9 @@ private:
 
   void StartServer(void);
 
+  // Nothing watched the link after the initial connect, so a dropped STA left
+  // the frame invisible until someone power cycled it.
+  void SuperviseWifi(void);
   void SendBusyResponse(void);
   void GetStatus(void);
   void ClearDisplay(void);

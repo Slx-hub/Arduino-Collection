@@ -50,6 +50,14 @@ asked for while the panel is refreshing or resting is queued, not dropped.
 
 All buttons share a 10s debounce cooldown.
 
+> **Do not call `buttons.Loop()` unconditionally.** It is gated on the display
+> being ready in `wifi.ino`, because sampling buttons outside that state kills
+> the WiFi stack -- the board keeps running but vanishes from the network, no
+> ping and no ARP entry, until it is power cycled. The gate was added in
+> `1e12519` right after the buttons landed, held for eleven months, was removed
+> in `41ebdbf` on the assumption it was redundant, and the failure returned
+> within a day. The full history is in the comment above the gate.
+
 ## Panel Timing
 
 A refresh takes ~30s and the panel then rests for 2 minutes. `DisplayHandler`
@@ -123,6 +131,17 @@ The sketch uses ~94% of the 1.2MB app partition. There is little headroom left,
 and an OTA update has to fit the second partition, so watch the size when adding
 code.
 
+## WiFi Supervision
+
+Nothing watched the link after the initial connect, so a dropped STA left the
+frame running but invisible -- no ping, no ARP entry -- until it was power
+cycled. `EspServer::SuperviseWifi()` now runs every loop once the server is up:
+a 30s grace period lets brief blips self heal, then `WiFi.reconnect()` every
+15s, and after 8 failed attempts (~2 minutes) `ESP.restart()`, which re-runs
+`autoConnect` and falls back to the setup portal. `WiFi.setAutoReconnect(true)`
+is set in `StartServer()` since the core does not reliably keep it on across a
+WiFiManager connect.
+
 ## WiFi Connection
 
 On first boot, or when the saved network cannot be reached, the ESP32 creates an
@@ -150,7 +169,7 @@ The device runs a web server on **port 80**:
 
 ```json
 {"status":"ready","uptime_s":41,"refreshes":3,"last_refresh":"image",
- "rest_left_s":0,"buttons_down":0}
+ "rest_left_s":0,"buttons_down":0,"rssi":-48,"wifi_drops":0}
 ```
 
 - `status` -- `ready`, `busy`, `resting`, `uninitialized` or `error`
@@ -161,6 +180,11 @@ The device runs a web server on **port 80**:
 - `rest_left_s` -- seconds until the panel will accept another refresh
 - `buttons_down` -- raw pin bitmask, bit per button, 1 = reading pressed. A bit
   set with nobody at the frame means a stuck or noisy line.
+- `rssi` -- signal strength in dBm. Better than -60 is comfortable, so a healthy
+  value here rules out range as the cause of a dropout.
+- `wifi_drops` -- how many times the link has been lost and recovered since
+  boot. Climbing while `uptime_s` keeps rising means supervision is healing
+  drops; `uptime_s` resetting instead means the restart fallback fired.
 
 Error responses:
 
