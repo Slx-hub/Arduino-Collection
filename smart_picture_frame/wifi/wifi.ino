@@ -21,22 +21,28 @@ void setup() {
     delay(10);
   }
 
-  // display and buttons come up before the network, and nothing below is allowed
-  // to abort setup, so the clear button stays usable even with no wifi at all
+  // the display comes up first, and nothing below is allowed to abort setup, so
+  // the panel stays usable even when the network never comes up
   Serial.println("Initializing e-Paper");
   if (!handler.Init()) {
     Serial.println("e-Paper init failed");
   }
-
-  Serial.println("Initializing buttons");
-  buttons.Init();
-  buttons.SetDisplay(&handler);
 
   Serial.println("Initializing server");
   if (server.Init() != 0) {
     Serial.println("WiFi not up yet, carrying on so the buttons still work");
   }
   server.SetDisplay(&handler);
+
+  // Buttons LAST, deliberately. GPIO16 is the primary ESP-IDF console UART TX
+  // (CONFIG_ESP_CONSOLE_UART_NUM=0), so wifi bringup logs all over that pin.
+  // Claiming it as an input before server.Init() -- which is what 41ebdbf did
+  // -- lines the button up against console traffic and produces phantom
+  // presses. The original code always initialised buttons last; that ordering
+  // is load-bearing, not incidental.
+  Serial.println("Initializing buttons");
+  buttons.Init();
+  buttons.SetDisplay(&handler);
   server.SetButtons(&buttons);
 
   Serial.println("All done!");

@@ -30,9 +30,13 @@ Display pins are set in `epdif.h`, button pins in `buttonhandler.cpp`.
 MISO is unused: the panel is write-only, so `SPI.begin()` is called with `-1` for it.
 That frees GPIO20 to serve as CS. **GPIO17 (D7) is the only unused pin on the header.**
 
-> Note: GPIO16 is UART0 TX on the ESP32-C6, so `Serial0` is unavailable while
-> button 3 is wired. This is harmless here -- the board builds with USB CDC on
-> boot, so `Serial` is the USB Serial/JTAG peripheral and logging is unaffected.
+> **GPIO16 is the primary ESP-IDF console UART TX.** The C6 sdkconfig sets
+> `CONFIG_ESP_CONSOLE_UART_NUM=0` with USB Serial/JTAG only as the *secondary*
+> console, so IDF log output is transmitted on the same pad button 3 sits on. A
+> UART line idles high and drives low for start and zero bits, which reads as a
+> button press. `Serial` itself is unaffected (it is the USB peripheral), but
+> the pin is a poor choice for a button and **moving button 3 to GPIO17 (D7) is
+> the proper fix.** Until then, see the init ordering note below.
 
 ## Buttons
 
@@ -48,7 +52,19 @@ are ignored while the display is not ready. Button 3 never touches the network s
 stuck image can always be cleared, even with wifi or the smarthome down. A clear
 asked for while the panel is refreshing or resting is queued, not dropped.
 
-All buttons share a 10s debounce cooldown.
+A press must read low across three consecutive samples (~300ms) before it
+counts, and the local clear is rate limited: more than 3 clears in 15 minutes
+latches it off until reboot and sets `clear_lockout` in `/status`. Both exist
+because a noisy GPIO16 once cycled the panel 34 times in two hours -- ready ->
+phantom press -> clear -> refresh -> rest -> ready -> phantom press, a loop that
+sustains itself. All buttons additionally share a 10s cooldown.
+
+> **`buttons.Init()` must stay last in `setup()`.** GPIO16 carries the IDF
+> console (see above), so the pin has to be claimed as an input *after* wifi has
+> finished its noisy bringup. `41ebdbf` moved it ahead of `server.Init()` so the
+> buttons would survive a wifi failure, and phantom presses started. Moving it
+> back stopped the pin reading low at all: 176 samples over 15 minutes, zero
+> lows, where previously a low showed up within seconds.
 
 > **Do not call `buttons.Loop()` unconditionally.** It is gated on the display
 > being ready in `wifi.ino`, because sampling buttons outside that state kills
@@ -185,6 +201,8 @@ The device runs a web server on **port 80**:
 - `wifi_drops` -- how many times the link has been lost and recovered since
   boot. Climbing while `uptime_s` keeps rising means supervision is healing
   drops; `uptime_s` resetting instead means the restart fallback fired.
+- `clear_lockout` -- true once the runaway guard has disabled the local clear
+  button (more than 3 clears in 15 minutes). HTTP `/clear` is unaffected.
 
 Error responses:
 

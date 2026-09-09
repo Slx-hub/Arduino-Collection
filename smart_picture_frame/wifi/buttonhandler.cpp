@@ -84,7 +84,29 @@ void ButtonHandler::HandleButton(int index) {
 // with wifi down. Clear() also accepts the error state, which the image path does
 // not, making this the way out of a failed refresh.
 void ButtonHandler::ClearDisplay(void) {
-    Serial.println("Clearing display locally");
+    if (!localClearEnabled || localClearLockedOut) {
+        Serial.println("Button clear ignored: local clear disabled");
+        return;
+    }
+
+    // Runaway guard. A noisy GPIO16 previously cycled the panel every ~3.7
+    // minutes for two hours; nobody presses clear three times in a quarter of
+    // an hour, so treat that as a stuck line and stop until the next reboot.
+    unsigned long now = millis();
+    if (clearsInWindow == 0 || now - clearWindowStart > clearWindowMs) {
+        clearWindowStart = now;
+        clearsInWindow = 0;
+    }
+    clearsInWindow++;
+    if (clearsInWindow > maxClearsPerWindow) {
+        localClearLockedOut = true;
+        Serial.printf("Runaway button clears (%d in %lus), locking out local clear\n",
+                      clearsInWindow, (now - clearWindowStart) / 1000);
+        return;
+    }
+
+    Serial.printf("Clearing display locally (%d of %d in this window)\n",
+                  clearsInWindow, maxClearsPerWindow);
 
     if (dspPtr == nullptr) {
         Serial.println("No display attached");

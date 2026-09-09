@@ -51,6 +51,7 @@ void EspServer::GetStatus(void) {
   // rssi separates "weak signal" from "something else killed the link"
   jsonDocument["rssi"] = WiFi.RSSI();
   jsonDocument["wifi_drops"] = wifiDrops;
+  jsonDocument["clear_lockout"] = btnPtr != NULL && btnPtr->IsClearLockedOut();
   serializeJson(jsonDocument, buffer);
 
   server.send(200, "application/json", buffer);
